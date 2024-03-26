@@ -7,8 +7,6 @@ services:
       - "${ENTRYPOINT_SVC_PORT}:5000"
     networks:
       - microservices_network
-    env_file:
-      - common.env
     environment:
       - SERVICE_NAME=entrypoint
       - OTEL_EXPORTER_OTLP_ENDPOINT=collector:${COLLECTOR_GRPC_PORT}
@@ -21,8 +19,6 @@ services:
       - "${SVC_A_PORT}:5000"
     networks:
       - microservices_network
-    env_file:
-      - common.env
     environment:
       - SERVICE_NAME=service_a
       - OTEL_EXPORTER_OTLP_ENDPOINT=collector:${COLLECTOR_GRPC_PORT}
@@ -35,8 +31,6 @@ services:
       - "${SVC_B_PORT}:5000"
     networks:
       - microservices_network
-    env_file:
-      - common.env
     environment:
       - SERVICE_NAME=service_b
       - OTEL_EXPORTER_OTLP_ENDPOINT=collector:${COLLECTOR_GRPC_PORT}
@@ -55,9 +49,6 @@ services:
     volumes:
       - ./collector/collector-config.yml:/etc/collector-config.yml
     command: ["--config", "/etc/collector-config.yml"]
-    environment:
-      - DATADOG_API_KEY=${DATADOG_API_KEY}
-      - DATADOG_API_SITE=${DATADOG_API_SITE}
 
 networks:
   microservices_network:
