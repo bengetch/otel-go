@@ -9,15 +9,6 @@ receivers:
 exporters:
   debug:
     verbosity: detailed
-  datadog:
-    api:
-      key: "${DATADOG_API_KEY}"
-      site: "${DATADOG_API_SITE}"
-    metrics:
-      resource_attributes_as_tags: true
-      instrumentation_scope_metadata_as_tags: false
-    host_metadata:
-      enabled: false
 
 processors:
   batch:

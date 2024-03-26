@@ -44,8 +44,6 @@ services:
       - "${COLLECTOR_HTTP_PORT}:4318"
     networks:
       - microservices_network
-    env_file:
-      - common.env
     volumes:
       - ./collector/collector-config.yml:/etc/collector-config.yml
     command: ["--config", "/etc/collector-config.yml"]
