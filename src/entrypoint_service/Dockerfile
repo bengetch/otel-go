@@ -5,6 +5,7 @@ WORKDIR /app
 # copy requirements file, download requirements
 COPY go.mod go.sum ./
 RUN go mod download
+
 # copy rest of dependencies
 COPY . .
 

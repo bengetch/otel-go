@@ -1,20 +1,99 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
+	"context"
 	"fmt"
 	"github.com/gin-gonic/gin"
-	"io"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 	"log"
 	"math/rand"
 	"net/http"
 	"os"
-	"time"
 )
 
+var (
+	ServiceName       string
+	meter             metric.Meter
+	tracer            trace.Tracer
+	helloRequestCount metric.Int64Counter
+)
+
+func init() {
+	initServiceName()
+	initTracer()
+	initMeter()
+	initHelloRequestCount()
+}
+
+func initServiceName() {
+	ServiceName = os.Getenv("SERVICE_NAME")
+	if ServiceName == "" {
+		log.Fatal("SERVICE_NAME environment variable not set")
+	}
+}
+
+func initTracer() {
+	tracerName := fmt.Sprintf("%s.tracer", ServiceName)
+	tracer = otel.Tracer(tracerName)
+}
+
+func initMeter() {
+	meterName := fmt.Sprintf("%s.meter", ServiceName)
+	meter = otel.Meter(meterName)
+}
+
+func initHelloRequestCount() {
+	/*
+		initialize an int counter meter that tracks the number of requests to the `/` API of this service
+	*/
+
+	var err error
+	meterName := fmt.Sprintf("%s.hello.requests", ServiceName)
+
+	helloRequestCount, err = meter.Int64Counter(meterName,
+		metric.WithDescription("The number of requests to the `/` API"),
+	)
+	if err != nil {
+		log.Fatalf("Failed to initialize %s.hello.requests meter: %v\n", ServiceName, err)
+	}
+}
+
 func main() {
+
+	otelExporterOtlpEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+
+	// configure tracer provider
+	tp, tpErr := GetTraceProvider(os.Getenv("SPAN_EXPORTER"), otelExporterOtlpEndpoint)
+	if tpErr != nil {
+		log.Fatalf("Failed to get tracer provider: %v\n", tpErr)
+	}
+	defer func(tp *sdktrace.TracerProvider, ctx context.Context) {
+		err := tp.Shutdown(ctx)
+		if err != nil {
+			log.Printf("Error while shutting down Tracer provider: %v\n", err)
+		}
+	}(tp, context.Background())
+
+	// configure meter provider
+	mp, mpErr := GetMetricProvider(os.Getenv("METER_EXPORTER"), otelExporterOtlpEndpoint)
+	if mpErr != nil {
+		log.Fatalf("Failed to get metric provider: %v\n", mpErr)
+	}
+	defer func(mp *sdkmetric.MeterProvider, ctx context.Context) {
+		err := mp.Shutdown(ctx)
+		if err != nil {
+			log.Printf("Error while shutting down Metric provider: %v\n", err)
+		}
+	}(mp, context.Background())
+
 	router := gin.Default()
+	router.Use(otelgin.Middleware(ServiceName))
+
 	router.GET("/", hello)
 	router.GET("/basicA", callServiceA)
 	router.GET("/basicB", callServiceB)
@@ -29,6 +108,13 @@ func main() {
 }
 
 func hello(c *gin.Context) {
+
+	_, childSpan := tracer.Start(c.Request.Context(), "span-entrypoint-hello")
+	defer childSpan.End()
+
+	// increment meter that tracks requests to `/` API of this service
+	helloRequestCount.Add(c.Request.Context(), 1)
+
 	c.IndentedJSON(http.StatusOK, gin.H{"message": "hello from Entrypoint service"})
 }
 
@@ -37,67 +123,13 @@ type BasicPayload struct {
 	Number  int    `json:"number"`
 }
 
-func makeRequest(c *gin.Context, r *BasicPayload, url string, method string, responseField string) (string, error) {
-	/*
-		send a `BasicPayload` to the target `url`. If the response JSON includes
-		a field that matches the `responseField` string, return it
-	*/
-
-	jsonData, err := json.Marshal(r)
-	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-			"message": "failed to construct JSON for request",
-			"error":   err.Error(),
-		})
-		return "", err
-	}
-
-	req, err := http.NewRequest(method, url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-			"message": "failed to create request",
-			"error":   err.Error(),
-		})
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: time.Second * 10}
-	resp, err := client.Do(req)
-	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-			"message": "failed to send request",
-			"error":   err.Error(),
-		})
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-			"message": "failed to read response body",
-			"error":   err.Error(),
-		})
-		return "", err
-	}
-
-	var responseMap map[string]string
-	if err := json.Unmarshal(body, &responseMap); err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-			"message": "failed to parse response JSON",
-			"error":   err.Error(),
-		})
-		return "", err
-	}
-
-	return responseMap[responseField], nil
-}
-
 func callServiceA(c *gin.Context) {
 	/*
 		send a hello message and a random number to service A, return response from A to client
 	*/
+
+	_, childSpan := tracer.Start(c.Request.Context(), "span-entrypoint-call-service-a")
+	defer childSpan.End()
 
 	requestToA := BasicPayload{
 		Message: "hello to A",
@@ -124,6 +156,9 @@ func callServiceB(c *gin.Context) {
 	/*
 		send a hello message and a random number to service B, return response from B to client
 	*/
+
+	_, childSpan := tracer.Start(c.Request.Context(), "span-entrypoint-call-service-b")
+	defer childSpan.End()
 
 	requestToB := BasicPayload{
 		Message: "Hello to B",
@@ -153,6 +188,9 @@ func chainedCallServiceA(c *gin.Context) {
 		returned to the client
 	*/
 
+	_, childSpan := tracer.Start(c.Request.Context(), "span-entrypoint-chained-call-service-a")
+	defer childSpan.End()
+
 	requestToA := BasicPayload{
 		Message: "hello to A, and also to B",
 		Number:  rand.Intn(11),
@@ -179,6 +217,9 @@ func chainedAsyncCallServiceA(c *gin.Context) {
 		send a hello message and a random number to service A, which sends the same to service B.
 		service A does not wait for a response from service B before sending its response.
 	*/
+
+	_, childSpan := tracer.Start(c.Request.Context(), "span-entrypoint-chained-async-call-service-a")
+	defer childSpan.End()
 
 	requestToA := BasicPayload{
 		Message: "asynchronous hello to A, and also to B",
