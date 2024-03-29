@@ -6,6 +6,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/propagation"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
@@ -144,7 +145,7 @@ func basicRequest(c *gin.Context) {
 
 func chainedRequest(c *gin.Context) {
 
-	_, childSpan := tracer.Start(c.Request.Context(), "span-service-a-chained-request")
+	ctx, childSpan := tracer.Start(c.Request.Context(), "span-service-a-chained-request")
 	defer childSpan.End()
 
 	var payload BasicPayload
@@ -163,41 +164,55 @@ func chainedRequest(c *gin.Context) {
 
 	api := "/chainedRequest"
 	responseField := "number"
-	response, err := makeRequest(c, &requestToB, fmt.Sprintf("http://service_b:5000%s", api), "POST", responseField)
-	if err == nil {
-		if response != "" {
-			c.IndentedJSON(http.StatusOK, gin.H{
-				"message": fmt.Sprintf("number from service A, from service B: %s", response),
-			})
-		} else {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-				"message": fmt.Sprintf("response from %s API of service B did not contain a `%s` key", api, responseField),
-			})
-		}
+	response, status, err := makeRequest(&requestToB, fmt.Sprintf("http://service_b:5000%s", api), "POST", responseField, ctx)
+	if err != nil {
+		c.AbortWithStatusJSON(status, gin.H{
+			"message": fmt.Sprintf("%s: %v", response, err),
+		})
+	} else {
+		c.IndentedJSON(http.StatusOK, gin.H{
+			"message": fmt.Sprintf("number from service A, from service B: %s", response),
+		})
 	}
 }
 
-func makeAsyncRequest(c *gin.Context, payload *BasicPayload) {
+func makeAsyncRequest(payload *BasicPayload, ctx context.Context) {
+
+	ctx, childSpan := tracer.Start(ctx, "span-service-a-chained-make-async-request")
+	defer childSpan.End()
 
 	api := "/chainedRequest"
 	responseField := "number"
-	response, err := makeRequest(c, payload, fmt.Sprintf("http://service_b:5000%s", api), "POST", responseField)
+	response, _, err := makeRequest(payload, fmt.Sprintf("http://service_b:5000%s", api), "POST", responseField, ctx)
 
 	// wait 10 seconds to ensure that below logs fire after response has been sent
 	time.Sleep(10 * time.Second)
 
-	if err == nil {
-		if response != "" {
-			log.Printf("number from service B:  %s", response)
-		} else {
-			log.Printf("response from %s API of service B did not contain a %s key", api, responseField)
-		}
+	if err != nil {
+		log.Printf("Err: %v", err)
+	} else {
+		log.Printf("number from service B: %s", response)
 	}
+}
+
+func newContext(oldContext context.Context, header http.Header) context.Context {
+	/*
+		construct a new context that is not bound to the gin.Request.Context, but contains
+		data for current trace
+	*/
+
+	propagator := otel.GetTextMapPropagator()
+	extractedCtx := propagator.Extract(oldContext, propagation.HeaderCarrier(header))
+	newCtx := context.Background()
+	carrier := propagation.MapCarrier{}
+	propagator.Inject(extractedCtx, carrier)
+
+	return propagator.Extract(newCtx, carrier)
 }
 
 func chainedAsyncRequest(c *gin.Context) {
 
-	_, childSpan := tracer.Start(c.Request.Context(), "span-service-a-chained-async-request")
+	ctx, childSpan := tracer.Start(c.Request.Context(), "span-service-a-chained-async-request")
 	defer childSpan.End()
 
 	var payload BasicPayload
@@ -213,8 +228,8 @@ func chainedAsyncRequest(c *gin.Context) {
 		Message: "asynchronous hello to B from A and also Entrypoint",
 		Number:  payload.Number + rand.Intn(11),
 	}
-	// TODO: need to defer childSpan.End() to when this async call completes, not just the body of this function
-	go makeAsyncRequest(c, &requestToB)
+
+	go makeAsyncRequest(&requestToB, newContext(ctx, c.Request.Header))
 
 	c.IndentedJSON(http.StatusOK, gin.H{
 		"message": "successfully sent asynchronous message to service B",

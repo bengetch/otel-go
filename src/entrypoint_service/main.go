@@ -128,7 +128,7 @@ func callServiceA(c *gin.Context) {
 		send a hello message and a random number to service A, return response from A to client
 	*/
 
-	_, childSpan := tracer.Start(c.Request.Context(), "span-entrypoint-call-service-a")
+	ctx, childSpan := tracer.Start(c.Request.Context(), "span-entrypoint-call-service-a")
 	defer childSpan.End()
 
 	requestToA := BasicPayload{
@@ -138,17 +138,15 @@ func callServiceA(c *gin.Context) {
 
 	api := "/basicRequest"
 	responseField := "message"
-	response, err := makeRequest(c, &requestToA, fmt.Sprintf("http://service_a:5000%s", api), "POST", responseField)
-	if err == nil {
-		if response != "" {
-			c.IndentedJSON(http.StatusOK, gin.H{
-				"message": fmt.Sprintf("message from service A: %s", response),
-			})
-		} else {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-				"error": fmt.Sprintf("response from %s API of service A did not contain a `%s` key", api, responseField),
-			})
-		}
+	response, status, err := makeRequest(&requestToA, fmt.Sprintf("http://service_a:5000%s", api), "POST", responseField, ctx)
+	if err != nil {
+		c.AbortWithStatusJSON(status, gin.H{
+			"message": fmt.Sprintf("%s: %v", response, err),
+		})
+	} else {
+		c.IndentedJSON(http.StatusOK, gin.H{
+			"message": fmt.Sprintf("message from service A: %s", response),
+		})
 	}
 }
 
@@ -157,7 +155,7 @@ func callServiceB(c *gin.Context) {
 		send a hello message and a random number to service B, return response from B to client
 	*/
 
-	_, childSpan := tracer.Start(c.Request.Context(), "span-entrypoint-call-service-b")
+	ctx, childSpan := tracer.Start(c.Request.Context(), "span-entrypoint-call-service-b")
 	defer childSpan.End()
 
 	requestToB := BasicPayload{
@@ -167,17 +165,15 @@ func callServiceB(c *gin.Context) {
 
 	api := "/basicRequest"
 	responseField := "message"
-	response, err := makeRequest(c, &requestToB, fmt.Sprintf("http://service_b:5000%s", api), "POST", responseField)
-	if err == nil {
-		if response != "" {
-			c.IndentedJSON(http.StatusOK, gin.H{
-				"message": fmt.Sprintf("message from service B: %s", response),
-			})
-		} else {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-				"message": fmt.Sprintf("response from %s API of service B did not contain a `%s` key", api, responseField),
-			})
-		}
+	response, status, err := makeRequest(&requestToB, fmt.Sprintf("http://service_b:5000%s", api), "POST", responseField, ctx)
+	if err != nil {
+		c.AbortWithStatusJSON(status, gin.H{
+			"message": fmt.Sprintf("%s: %v", response, err),
+		})
+	} else {
+		c.IndentedJSON(http.StatusOK, gin.H{
+			"message": fmt.Sprintf("message from service B: %s", response),
+		})
 	}
 }
 
@@ -188,7 +184,7 @@ func chainedCallServiceA(c *gin.Context) {
 		returned to the client
 	*/
 
-	_, childSpan := tracer.Start(c.Request.Context(), "span-entrypoint-chained-call-service-a")
+	ctx, childSpan := tracer.Start(c.Request.Context(), "span-entrypoint-chained-call-service-a")
 	defer childSpan.End()
 
 	requestToA := BasicPayload{
@@ -198,17 +194,15 @@ func chainedCallServiceA(c *gin.Context) {
 
 	api := "/chainedRequest"
 	responseField := "message"
-	response, err := makeRequest(c, &requestToA, fmt.Sprintf("http://service_a:5000%s", api), "POST", responseField)
-	if err == nil {
-		if response != "" {
-			c.IndentedJSON(http.StatusOK, gin.H{
-				"message": fmt.Sprintf("message from service A, from service B: %s", response),
-			})
-		} else {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-				"message": fmt.Sprintf("response from %s API of service A did not contain a `%s` key", api, responseField),
-			})
-		}
+	response, status, err := makeRequest(&requestToA, fmt.Sprintf("http://service_a:5000%s", api), "POST", responseField, ctx)
+	if err != nil {
+		c.AbortWithStatusJSON(status, gin.H{
+			"message": fmt.Sprintf("%s: %v", response, err),
+		})
+	} else {
+		c.IndentedJSON(http.StatusOK, gin.H{
+			"message": fmt.Sprintf("message from service A, from service B: %s", response),
+		})
 	}
 }
 
@@ -218,7 +212,7 @@ func chainedAsyncCallServiceA(c *gin.Context) {
 		service A does not wait for a response from service B before sending its response.
 	*/
 
-	_, childSpan := tracer.Start(c.Request.Context(), "span-entrypoint-chained-async-call-service-a")
+	ctx, childSpan := tracer.Start(c.Request.Context(), "span-entrypoint-chained-async-call-service-a")
 	defer childSpan.End()
 
 	requestToA := BasicPayload{
@@ -228,16 +222,14 @@ func chainedAsyncCallServiceA(c *gin.Context) {
 
 	api := "/chainedAsyncRequest"
 	responseField := "message"
-	response, err := makeRequest(c, &requestToA, fmt.Sprintf("http://service_a:5000%s", api), "POST", responseField)
-	if err == nil {
-		if response != "" {
-			c.IndentedJSON(http.StatusOK, gin.H{
-				"message": fmt.Sprintf("message from service A, from service B: %s", response),
-			})
-		} else {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-				"message": fmt.Sprintf("response from %s API of service A did not contain a %s key", api, responseField),
-			})
-		}
+	response, status, err := makeRequest(&requestToA, fmt.Sprintf("http://service_a:5000%s", api), "POST", responseField, ctx)
+	if err != nil {
+		c.AbortWithStatusJSON(status, gin.H{
+			"message": fmt.Sprintf("%s: %v", response, err),
+		})
+	} else {
+		c.IndentedJSON(http.StatusOK, gin.H{
+			"message": fmt.Sprintf("message from service A, from service B: %s", response),
+		})
 	}
 }

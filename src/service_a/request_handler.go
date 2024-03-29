@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
-	"github.com/gin-gonic/gin"
+	"errors"
+	"fmt"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"io"
 	"log"
@@ -11,30 +13,21 @@ import (
 	"time"
 )
 
-func makeRequest(c *gin.Context, r *BasicPayload, url string, method string, responseField string) (string, error) {
+func makeRequest(r *BasicPayload, url string, method string, responseField string, ctx context.Context) (string, int, error) {
 	/*
-		send a `BasicPayload` to the target `url`. If the response JSON includes
+		send a `BasicPayload` reqeust to the target `url`. If the response JSON includes
 		a field that matches the `responseField` string, return it
 	*/
 
 	// construct Request JSON from BasicPayload data
 	jsonData, err := json.Marshal(r)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-			"message": "failed to construct JSON for request",
-			"error":   err.Error(),
-		})
-		return "", err
+		return "failed to construct JSON for request", http.StatusInternalServerError, err
 	}
 
-	// construct new Request object from JSON
-	req, err := http.NewRequestWithContext(c.Request.Context(), method, url, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewBuffer(jsonData))
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-			"message": "failed to create request",
-			"error":   err.Error(),
-		})
-		return "", err
+		return "failed to create request", http.StatusInternalServerError, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
@@ -44,12 +37,9 @@ func makeRequest(c *gin.Context, r *BasicPayload, url string, method string, res
 		Transport: otelhttp.NewTransport(http.DefaultTransport),
 	}
 	resp, err := client.Do(req)
+	// TODO: more granular HTTP status handling
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-			"message": "failed to send request",
-			"error":   err.Error(),
-		})
-		return "", err
+		return "failed to send request", http.StatusInternalServerError, err
 	}
 	defer func(resp *http.Response) {
 		err := resp.Body.Close()
@@ -61,22 +51,20 @@ func makeRequest(c *gin.Context, r *BasicPayload, url string, method string, res
 	// read response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-			"message": "failed to read response body",
-			"error":   err.Error(),
-		})
-		return "", err
+		return "failed to read response body", http.StatusInternalServerError, err
 	}
 
 	// construct string map from response body
 	var responseMap map[string]string
 	if err := json.Unmarshal(body, &responseMap); err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-			"message": "failed to parse response JSON",
-			"error":   err.Error(),
-		})
-		return "", err
+		return "failed to parse response JSON", http.StatusInternalServerError, err
 	}
 
-	return responseMap[responseField], nil
+	if responseMap[responseField] == "" {
+		return fmt.Sprintf("response from %s API of service B did not contain a `%s` key", url, responseField),
+			http.StatusInternalServerError,
+			errors.New("response empty")
+	}
+
+	return responseMap[responseField], http.StatusOK, nil
 }
