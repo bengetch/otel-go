@@ -13,6 +13,15 @@ import (
 	"time"
 )
 
+var Client *http.Client
+
+func NewHttpClient() *http.Client {
+	return &http.Client{
+		Timeout:   time.Second * 10,
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}
+}
+
 func makeRequest(r *BasicPayload, url string, method string, responseField string, ctx context.Context) (string, int, error) {
 	/*
 		send a `BasicPayload` reqeust to the target `url`. If the response JSON includes
@@ -30,13 +39,8 @@ func makeRequest(r *BasicPayload, url string, method string, responseField strin
 		return "failed to create request", http.StatusInternalServerError, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-
-	// instantiate HTTP Client object and send request
-	client := &http.Client{
-		Timeout:   time.Second * 10,
-		Transport: otelhttp.NewTransport(http.DefaultTransport),
-	}
-	resp, err := client.Do(req)
+	
+	resp, err := Client.Do(req)
 	// TODO: more granular HTTP status handling
 	if err != nil {
 		return "failed to send request", http.StatusInternalServerError, err

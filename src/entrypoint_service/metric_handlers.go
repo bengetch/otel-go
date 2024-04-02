@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -55,7 +54,6 @@ func GetMetricProvider(exporterType string, otelExporterOtlpEndpoint string) (*s
 			semconv.ServiceNameKey.String(ServiceName),
 		)),
 	)
-	otel.SetMeterProvider(meterProvider)
 
 	return meterProvider, nil
 }

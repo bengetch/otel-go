@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
@@ -32,7 +31,8 @@ func GetTraceProvider(exporterType string, otelExporterOtlpEndpoint string) (*sd
 	var err error
 	if exporterType == "stdout" {
 		traceExporter, err = stdouttrace.New(
-			stdouttrace.WithPrettyPrint())
+			stdouttrace.WithPrettyPrint(),
+		)
 	} else if exporterType == "otel" {
 		if otelExporterOtlpEndpoint == "" {
 			log.Fatal("Failed to configure TracerProvider: SPAN_EXPORTER set to `otel` but OTEL_EXPORTER_OTLP_ENDPOINT is empty")
@@ -56,13 +56,10 @@ func GetTraceProvider(exporterType string, otelExporterOtlpEndpoint string) (*sd
 			semconv.ServiceNameKey.String(ServiceName),
 		)),
 	)
-	otel.SetTracerProvider(traceProvider)
-
-	otel.SetTextMapPropagator(
-		propagation.NewCompositeTextMapPropagator(
-			propagation.TraceContext{},
-		),
-	)
 
 	return traceProvider, nil
+}
+
+func GetTextPropagator() propagation.TextMapPropagator {
+	return propagation.NewCompositeTextMapPropagator(propagation.TraceContext{})
 }

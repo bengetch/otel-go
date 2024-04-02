@@ -18,17 +18,10 @@ import (
 
 var (
 	ServiceName       string
-	meter             metric.Meter
-	tracer            trace.Tracer
+	Meter             metric.Meter
+	Tracer            trace.Tracer
 	helloRequestCount metric.Int64Counter
 )
-
-func init() {
-	initServiceName()
-	initTracer()
-	initMeter()
-	initHelloRequestCount()
-}
 
 func initServiceName() {
 	ServiceName = os.Getenv("SERVICE_NAME")
@@ -39,31 +32,41 @@ func initServiceName() {
 
 func initTracer() {
 	tracerName := fmt.Sprintf("%s.tracer", ServiceName)
-	tracer = otel.Tracer(tracerName)
+	Tracer = otel.Tracer(tracerName)
 }
 
 func initMeter() {
-	meterName := fmt.Sprintf("%s.meter", ServiceName)
-	meter = otel.Meter(meterName)
+	meterName := fmt.Sprintf("%s.Meter", ServiceName)
+	Meter = otel.Meter(meterName)
+}
+
+func initHttpClient() {
+	Client = NewHttpClient()
 }
 
 func initHelloRequestCount() {
 	/*
-		initialize an int counter meter that tracks the number of requests to the `/` API of this service
+		initialize an int counter Meter that tracks the number of requests to the `/` API of this service
 	*/
 
 	var err error
 	meterName := fmt.Sprintf("%s.hello.requests", ServiceName)
 
-	helloRequestCount, err = meter.Int64Counter(meterName,
+	helloRequestCount, err = Meter.Int64Counter(meterName,
 		metric.WithDescription("The number of requests to the `/` API"),
 	)
 	if err != nil {
-		log.Fatalf("Failed to initialize %s.hello.requests meter: %v\n", ServiceName, err)
+		log.Fatalf("Failed to initialize %s.hello.requests Meter: %v\n", ServiceName, err)
 	}
 }
 
 func main() {
+
+	initServiceName()
+	initTracer()
+	initMeter()
+	initHelloRequestCount()
+	initHttpClient()
 
 	otelExporterOtlpEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 
@@ -71,6 +74,8 @@ func main() {
 	tp, tpErr := GetTraceProvider(os.Getenv("SPAN_EXPORTER"), otelExporterOtlpEndpoint)
 	if tpErr != nil {
 		log.Fatalf("Failed to get tracer provider: %v\n", tpErr)
+	} else {
+		otel.SetTracerProvider(tp)
 	}
 	defer func(tp *sdktrace.TracerProvider, ctx context.Context) {
 		err := tp.Shutdown(ctx)
@@ -79,10 +84,12 @@ func main() {
 		}
 	}(tp, context.Background())
 
-	// configure meter provider
+	// configure Meter provider
 	mp, mpErr := GetMetricProvider(os.Getenv("METER_EXPORTER"), otelExporterOtlpEndpoint)
 	if mpErr != nil {
 		log.Fatalf("Failed to get metric provider: %v\n", mpErr)
+	} else {
+		otel.SetMeterProvider(mp)
 	}
 	defer func(mp *sdkmetric.MeterProvider, ctx context.Context) {
 		err := mp.Shutdown(ctx)
@@ -91,8 +98,16 @@ func main() {
 		}
 	}(mp, context.Background())
 
+	// TODO: see if these .With<provider> opts are necessary
+	textPropagator := GetTextPropagator()
+	otel.SetTextMapPropagator(textPropagator)
+
 	router := gin.Default()
-	router.Use(otelgin.Middleware(ServiceName))
+	router.Use(otelgin.Middleware(
+		ServiceName,
+		otelgin.WithTracerProvider(tp),
+		otelgin.WithPropagators(textPropagator)),
+	)
 
 	router.GET("/", hello)
 	router.GET("/basicA", callServiceA)
@@ -109,10 +124,7 @@ func main() {
 
 func hello(c *gin.Context) {
 
-	_, childSpan := tracer.Start(c.Request.Context(), "span-entrypoint-hello")
-	defer childSpan.End()
-
-	// increment meter that tracks requests to `/` API of this service
+	// increment Meter that tracks requests to `/` API of this service
 	helloRequestCount.Add(c.Request.Context(), 1)
 
 	c.IndentedJSON(http.StatusOK, gin.H{"message": "hello from Entrypoint service"})
@@ -128,9 +140,6 @@ func callServiceA(c *gin.Context) {
 		send a hello message and a random number to service A, return response from A to client
 	*/
 
-	ctx, childSpan := tracer.Start(c.Request.Context(), "span-entrypoint-call-service-a")
-	defer childSpan.End()
-
 	requestToA := BasicPayload{
 		Message: "hello to A",
 		Number:  rand.Intn(11),
@@ -138,7 +147,14 @@ func callServiceA(c *gin.Context) {
 
 	api := "/basicRequest"
 	responseField := "message"
-	response, status, err := makeRequest(&requestToA, fmt.Sprintf("http://service_a:5000%s", api), "POST", responseField, ctx)
+	response, status, err := makeRequest(
+		&requestToA,
+		fmt.Sprintf("http://service_a:5000%s", api),
+		"POST",
+		responseField,
+		c.Request.Context(),
+	)
+
 	if err != nil {
 		c.AbortWithStatusJSON(status, gin.H{
 			"message": fmt.Sprintf("%s: %v", response, err),
@@ -155,9 +171,6 @@ func callServiceB(c *gin.Context) {
 		send a hello message and a random number to service B, return response from B to client
 	*/
 
-	ctx, childSpan := tracer.Start(c.Request.Context(), "span-entrypoint-call-service-b")
-	defer childSpan.End()
-
 	requestToB := BasicPayload{
 		Message: "Hello to B",
 		Number:  rand.Intn(11),
@@ -165,7 +178,13 @@ func callServiceB(c *gin.Context) {
 
 	api := "/basicRequest"
 	responseField := "message"
-	response, status, err := makeRequest(&requestToB, fmt.Sprintf("http://service_b:5000%s", api), "POST", responseField, ctx)
+	response, status, err := makeRequest(
+		&requestToB,
+		fmt.Sprintf("http://service_b:5000%s", api),
+		"POST",
+		responseField,
+		c.Request.Context(),
+	)
 	if err != nil {
 		c.AbortWithStatusJSON(status, gin.H{
 			"message": fmt.Sprintf("%s: %v", response, err),
@@ -184,9 +203,6 @@ func chainedCallServiceA(c *gin.Context) {
 		returned to the client
 	*/
 
-	ctx, childSpan := tracer.Start(c.Request.Context(), "span-entrypoint-chained-call-service-a")
-	defer childSpan.End()
-
 	requestToA := BasicPayload{
 		Message: "hello to A, and also to B",
 		Number:  rand.Intn(11),
@@ -194,7 +210,13 @@ func chainedCallServiceA(c *gin.Context) {
 
 	api := "/chainedRequest"
 	responseField := "message"
-	response, status, err := makeRequest(&requestToA, fmt.Sprintf("http://service_a:5000%s", api), "POST", responseField, ctx)
+	response, status, err := makeRequest(
+		&requestToA,
+		fmt.Sprintf("http://service_a:5000%s", api),
+		"POST",
+		responseField,
+		c.Request.Context(),
+	)
 	if err != nil {
 		c.AbortWithStatusJSON(status, gin.H{
 			"message": fmt.Sprintf("%s: %v", response, err),
@@ -212,9 +234,6 @@ func chainedAsyncCallServiceA(c *gin.Context) {
 		service A does not wait for a response from service B before sending its response.
 	*/
 
-	ctx, childSpan := tracer.Start(c.Request.Context(), "span-entrypoint-chained-async-call-service-a")
-	defer childSpan.End()
-
 	requestToA := BasicPayload{
 		Message: "asynchronous hello to A, and also to B",
 		Number:  rand.Intn(11),
@@ -222,7 +241,13 @@ func chainedAsyncCallServiceA(c *gin.Context) {
 
 	api := "/chainedAsyncRequest"
 	responseField := "message"
-	response, status, err := makeRequest(&requestToA, fmt.Sprintf("http://service_a:5000%s", api), "POST", responseField, ctx)
+	response, status, err := makeRequest(
+		&requestToA,
+		fmt.Sprintf("http://service_a:5000%s", api),
+		"POST",
+		responseField,
+		c.Request.Context(),
+	)
 	if err != nil {
 		c.AbortWithStatusJSON(status, gin.H{
 			"message": fmt.Sprintf("%s: %v", response, err),
