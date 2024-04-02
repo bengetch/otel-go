@@ -12,6 +12,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -67,21 +68,17 @@ func main() {
 		}
 	}(mp, context.Background())
 
-	// TODO: see if these .With<provider> opts are necessary
 	textPropagator := GetTextPropagator()
 	otel.SetTextMapPropagator(textPropagator)
 
 	router := gin.Default()
-	router.Use(otelgin.Middleware(
-		ServiceName,
-		otelgin.WithTracerProvider(tp),
-		otelgin.WithPropagators(textPropagator)),
-	)
+	router.Use(otelgin.Middleware(ServiceName))
 
 	router.GET("/", hello)
 	router.POST("/basicRequest", basicRequest)
 	router.POST("/chainedRequest", chainedRequest)
 	router.POST("/chainedAsyncRequest", chainedAsyncRequest)
+	router.POST("/addNumber", addNumber)
 
 	err := router.Run("0.0.0.0:5000")
 	if err != nil {
@@ -209,5 +206,22 @@ func chainedAsyncRequest(c *gin.Context) {
 
 	c.IndentedJSON(http.StatusOK, gin.H{
 		"message": "successfully sent asynchronous message to service B",
+	})
+}
+
+func addNumber(c *gin.Context) {
+
+	var payload BasicPayload
+	if err := c.BindJSON(&payload); err != nil {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+			"message": "invalid request payload",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	c.IndentedJSON(http.StatusOK, gin.H{
+		"message": "hello from A, here is a number <= 10",
+		"number":  strconv.Itoa(payload.Number + rand.Intn(6)),
 	})
 }

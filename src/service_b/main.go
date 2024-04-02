@@ -65,11 +65,7 @@ func main() {
 	otel.SetTextMapPropagator(textPropagator)
 
 	router := gin.Default()
-	router.Use(otelgin.Middleware(
-		ServiceName,
-		otelgin.WithTracerProvider(tp),
-		otelgin.WithPropagators(textPropagator)),
-	)
+	router.Use(otelgin.Middleware(ServiceName))
 
 	// configure gin server API
 	router.GET("/", hello)

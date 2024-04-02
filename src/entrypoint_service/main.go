@@ -14,6 +14,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"strconv"
 )
 
 var (
@@ -98,22 +99,18 @@ func main() {
 		}
 	}(mp, context.Background())
 
-	// TODO: see if these .With<provider> opts are necessary
 	textPropagator := GetTextPropagator()
 	otel.SetTextMapPropagator(textPropagator)
 
 	router := gin.Default()
-	router.Use(otelgin.Middleware(
-		ServiceName,
-		otelgin.WithTracerProvider(tp),
-		otelgin.WithPropagators(textPropagator)),
-	)
+	router.Use(otelgin.Middleware(ServiceName))
 
 	router.GET("/", hello)
 	router.GET("/basicA", callServiceA)
 	router.GET("/basicB", callServiceB)
 	router.GET("/chainedA", chainedCallServiceA)
 	router.GET("/chainedAsyncA", chainedAsyncCallServiceA)
+	router.GET("/inlineTraceEx", inlineTracesExample)
 
 	err := router.Run("0.0.0.0:5000")
 	if err != nil {
@@ -257,4 +254,47 @@ func chainedAsyncCallServiceA(c *gin.Context) {
 			"message": fmt.Sprintf("message from service A, from service B: %s", response),
 		})
 	}
+}
+
+func inlineTracesExample(c *gin.Context) {
+
+	requestToA := BasicPayload{
+		Message: "request for a number from A",
+		Number:  rand.Intn(6),
+	}
+
+	api := "/addNumber"
+	responseField := "number"
+	response, status, err := makeRequest(
+		&requestToA,
+		fmt.Sprintf("http://service_a:5000%s", api),
+		"POST",
+		responseField,
+		c.Request.Context(),
+	)
+	if err != nil {
+		c.AbortWithStatusJSON(status, gin.H{
+			"message": fmt.Sprintf("%s: %v", response, err),
+		})
+	} else {
+		responseInt, err := strconv.Atoi(response)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+				"message": fmt.Sprintf("couldn't convert response %s to int: %v", response, err),
+			})
+		}
+		if responseInt <= 5 {
+			_, childSpan := Tracer.Start(c.Request.Context(), "span-entrypoint-add-number-less-than-5")
+			// do some work here under trace defined above
+			defer childSpan.End()
+		} else {
+			_, childSpan := Tracer.Start(c.Request.Context(), "span-entrypoint-add-number-more-than-5")
+			// same thing, but with this other trace
+			defer childSpan.End()
+		}
+		c.IndentedJSON(http.StatusOK, gin.H{
+			"message": fmt.Sprintf("number from Entrypoint service added to number from service A: %s", response),
+		})
+	}
+
 }
