@@ -12,6 +12,7 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=collector:${COLLECTOR_GRPC_PORT}
       - SPAN_EXPORTER=otel
       - METER_EXPORTER=noop
+      - LOG_HOOK_TYPE=basic
 
   service_a:
     build: ./service_a

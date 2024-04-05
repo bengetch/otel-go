@@ -71,6 +71,8 @@ func main() {
 
 	otelExporterOtlpEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 
+	//AddLogHooks(os.Getenv("LOG_HOOK_TYPE"))
+
 	// configure tracer provider
 	tp, tpErr := GetTraceProvider(os.Getenv("SPAN_EXPORTER"), otelExporterOtlpEndpoint)
 	if tpErr != nil {
@@ -123,6 +125,8 @@ func hello(c *gin.Context) {
 
 	// increment Meter that tracks requests to `/` API of this service
 	helloRequestCount.Add(c.Request.Context(), 1)
+
+	//logrus.WithFields(logrus.Fields{"fieldOne": "Hello this is field one"}).WithContext(c.Request.Context()).Info("Hello from `/` API")
 
 	c.IndentedJSON(http.StatusOK, gin.H{"message": "hello from Entrypoint service"})
 }
