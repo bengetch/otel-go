@@ -3,11 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/propagation"
-	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"log"
 	"math/rand"
 	"net/http"
@@ -15,11 +10,18 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/agoda-com/opentelemetry-go/otelzap"
 	"github.com/gin-gonic/gin"
+
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 var (
 	ServiceName string
+	Client      *http.Client
 )
 
 func initServiceName() {
@@ -30,7 +32,15 @@ func initServiceName() {
 }
 
 func initHttpClient() {
-	Client = NewHttpClient()
+	/*
+		create an http.Client instance with otelhttp transport configured. this transport configuration
+		ensures that trace context is correctly propagated across http requests
+	*/
+
+	Client = &http.Client{
+		Timeout:   time.Second * 10,
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}
 }
 
 func main() {
@@ -38,38 +48,10 @@ func main() {
 	initServiceName()
 	initHttpClient()
 
-	otelExporterOtlpEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-
-	// configure tracer provider
-	tp, tpErr := GetTraceProvider(os.Getenv("SPAN_EXPORTER"), otelExporterOtlpEndpoint)
-	if tpErr != nil {
-		log.Fatalf("Failed to get tracer provider: %v\n", tpErr)
-	} else {
-		otel.SetTracerProvider(tp)
-	}
-	defer func(tp *sdktrace.TracerProvider, ctx context.Context) {
-		err := tp.Shutdown(ctx)
-		if err != nil {
-			log.Printf("Error while shutting down Tracer provider: %v\n", err)
-		}
-	}(tp, context.Background())
-
-	// configure meter provider
-	mp, mpErr := GetMetricProvider(os.Getenv("METER_EXPORTER"), otelExporterOtlpEndpoint)
-	if mpErr != nil {
-		log.Fatalf("Failed to get metric provider: %v\n", mpErr)
-	} else {
-		otel.SetMeterProvider(mp)
-	}
-	defer func(mp *sdkmetric.MeterProvider, ctx context.Context) {
-		err := mp.Shutdown(ctx)
-		if err != nil {
-			log.Printf("Error while shutting down Metric provider: %v\n", err)
-		}
-	}(mp, context.Background())
-
-	textPropagator := GetTextPropagator()
-	otel.SetTextMapPropagator(textPropagator)
+	logProvider := SetupLogs()
+	tracerProvider := SetupTraces()
+	meterProvider := SetupMetrics()
+	defer CleanupTelemetryProviders(logProvider, tracerProvider, meterProvider)
 
 	router := gin.Default()
 	router.Use(otelgin.Middleware(ServiceName))
@@ -82,12 +64,18 @@ func main() {
 
 	err := router.Run("0.0.0.0:5000")
 	if err != nil {
-		log.Printf("Failed to start the server: %v\n", err)
-		os.Exit(1)
+		otelzap.Ctx(context.Background()).Fatal(
+			fmt.Sprintf("Failed to start the server: %v\n", err),
+		)
 	}
 }
 
 func hello(c *gin.Context) {
+
+	otelzap.Ctx(c.Request.Context()).Info(
+		fmt.Sprintf("hello from `/` API of service %s", ServiceName),
+	)
+
 	c.IndentedJSON(http.StatusOK, gin.H{"message": "Hello from Service A"})
 }
 
@@ -97,6 +85,10 @@ type BasicPayload struct {
 }
 
 func basicRequest(c *gin.Context) {
+
+	otelzap.Ctx(c.Request.Context()).Info(
+		fmt.Sprintf("hello from `/basicRequest` API of service %s", ServiceName),
+	)
 
 	var payload BasicPayload
 	if err := c.BindJSON(&payload); err != nil {
@@ -113,6 +105,10 @@ func basicRequest(c *gin.Context) {
 }
 
 func chainedRequest(c *gin.Context) {
+
+	otelzap.Ctx(c.Request.Context()).Info(
+		fmt.Sprintf("hello from `/chainedRequest` API of service %s", ServiceName),
+	)
 
 	var payload BasicPayload
 	if err := c.BindJSON(&payload); err != nil {
@@ -188,6 +184,10 @@ func newContext(oldContext context.Context, header http.Header) context.Context 
 
 func chainedAsyncRequest(c *gin.Context) {
 
+	otelzap.Ctx(c.Request.Context()).Info(
+		fmt.Sprintf("hello from `/chainedAsyncRequest` API of service %s", ServiceName),
+	)
+
 	var payload BasicPayload
 	if err := c.BindJSON(&payload); err != nil {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
@@ -210,6 +210,10 @@ func chainedAsyncRequest(c *gin.Context) {
 }
 
 func addNumber(c *gin.Context) {
+
+	otelzap.Ctx(c.Request.Context()).Info(
+		fmt.Sprintf("hello from `/addNumber` API of service %s", ServiceName),
+	)
 
 	var payload BasicPayload
 	if err := c.BindJSON(&payload); err != nil {

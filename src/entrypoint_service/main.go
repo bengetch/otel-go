@@ -3,18 +3,21 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/gin-gonic/gin"
-	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/metric"
-	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	"go.opentelemetry.io/otel/trace"
 	"log"
 	"math/rand"
 	"net/http"
 	"os"
 	"strconv"
+	"time"
+
+	"github.com/agoda-com/opentelemetry-go/otelzap"
+	"github.com/gin-gonic/gin"
+
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var (
@@ -22,6 +25,7 @@ var (
 	Meter             metric.Meter
 	Tracer            trace.Tracer
 	helloRequestCount metric.Int64Counter
+	Client            *http.Client
 )
 
 func initServiceName() {
@@ -31,18 +35,18 @@ func initServiceName() {
 	}
 }
 
-func initTracer() {
-	tracerName := fmt.Sprintf("%s.tracer", ServiceName)
-	Tracer = otel.Tracer(tracerName)
+func initTracerGlobal() {
+	/*
+		initialize global tracer instance, which is used to manually start traces when needed
+	*/
+	Tracer = otel.Tracer(fmt.Sprintf("%s.tracer", ServiceName))
 }
 
-func initMeter() {
-	meterName := fmt.Sprintf("%s.Meter", ServiceName)
-	Meter = otel.Meter(meterName)
-}
-
-func initHttpClient() {
-	Client = NewHttpClient()
+func initMeterGlobal() {
+	/*
+		initialize global meter instance, which is used to manually construct various meter objects
+	*/
+	Meter = otel.Meter(fmt.Sprintf("%s.Meter", ServiceName))
 }
 
 func initHelloRequestCount() {
@@ -61,46 +65,30 @@ func initHelloRequestCount() {
 	}
 }
 
+func initHttpClient() {
+	/*
+		create an http.Client instance with otelhttp transport configured. this transport configuration
+		ensures that trace context is correctly propagated across http requests
+	*/
+
+	Client = &http.Client{
+		Timeout:   time.Second * 10,
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}
+}
+
 func main() {
 
 	initServiceName()
-	initTracer()
-	initMeter()
+	initTracerGlobal()
+	initMeterGlobal()
 	initHelloRequestCount()
 	initHttpClient()
 
-	otelExporterOtlpEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-
-	// configure tracer provider
-	tp, tpErr := GetTraceProvider(os.Getenv("SPAN_EXPORTER"), otelExporterOtlpEndpoint)
-	if tpErr != nil {
-		log.Fatalf("Failed to get tracer provider: %v\n", tpErr)
-	} else {
-		otel.SetTracerProvider(tp)
-	}
-	defer func(tp *sdktrace.TracerProvider, ctx context.Context) {
-		err := tp.Shutdown(ctx)
-		if err != nil {
-			log.Printf("Error while shutting down Tracer provider: %v\n", err)
-		}
-	}(tp, context.Background())
-
-	// configure Meter provider
-	mp, mpErr := GetMetricProvider(os.Getenv("METER_EXPORTER"), otelExporterOtlpEndpoint)
-	if mpErr != nil {
-		log.Fatalf("Failed to get metric provider: %v\n", mpErr)
-	} else {
-		otel.SetMeterProvider(mp)
-	}
-	defer func(mp *sdkmetric.MeterProvider, ctx context.Context) {
-		err := mp.Shutdown(ctx)
-		if err != nil {
-			log.Printf("Error while shutting down Metric provider: %v\n", err)
-		}
-	}(mp, context.Background())
-
-	textPropagator := GetTextPropagator()
-	otel.SetTextMapPropagator(textPropagator)
+	logProvider := SetupLogs()
+	tracerProvider := SetupTraces()
+	meterProvider := SetupMetrics()
+	defer CleanupTelemetryProviders(logProvider, tracerProvider, meterProvider)
 
 	router := gin.Default()
 	router.Use(otelgin.Middleware(ServiceName))
@@ -114,12 +102,17 @@ func main() {
 
 	err := router.Run("0.0.0.0:5000")
 	if err != nil {
-		log.Printf("Failed to start the server: %v\n", err)
-		os.Exit(1)
+		otelzap.Ctx(context.Background()).Fatal(
+			fmt.Sprintf("Failed to start the server: %v\n", err),
+		)
 	}
 }
 
 func hello(c *gin.Context) {
+
+	otelzap.Ctx(c.Request.Context()).Info(
+		fmt.Sprintf("hello from `/` API of service %s", ServiceName),
+	)
 
 	// increment Meter that tracks requests to `/` API of this service
 	helloRequestCount.Add(c.Request.Context(), 1)
@@ -136,6 +129,10 @@ func callServiceA(c *gin.Context) {
 	/*
 		send a hello message and a random number to service A, return response from A to client
 	*/
+
+	otelzap.Ctx(c.Request.Context()).Info(
+		fmt.Sprintf("hello from `/basicA` API of service %s", ServiceName),
+	)
 
 	requestToA := BasicPayload{
 		Message: "hello to A",
@@ -167,6 +164,10 @@ func callServiceB(c *gin.Context) {
 	/*
 		send a hello message and a random number to service B, return response from B to client
 	*/
+
+	otelzap.Ctx(c.Request.Context()).Info(
+		fmt.Sprintf("hello from `/basicB` API of service %s", ServiceName),
+	)
 
 	requestToB := BasicPayload{
 		Message: "Hello to B",
@@ -200,6 +201,10 @@ func chainedCallServiceA(c *gin.Context) {
 		returned to the client
 	*/
 
+	otelzap.Ctx(c.Request.Context()).Info(
+		fmt.Sprintf("hello from `/chainedA` API of service %s", ServiceName),
+	)
+
 	requestToA := BasicPayload{
 		Message: "hello to A, and also to B",
 		Number:  rand.Intn(11),
@@ -231,6 +236,10 @@ func chainedAsyncCallServiceA(c *gin.Context) {
 		service A does not wait for a response from service B before sending its response.
 	*/
 
+	otelzap.Ctx(c.Request.Context()).Info(
+		fmt.Sprintf("hello from `/chainedAsyncA` API of service %s", ServiceName),
+	)
+
 	requestToA := BasicPayload{
 		Message: "asynchronous hello to A, and also to B",
 		Number:  rand.Intn(11),
@@ -257,6 +266,10 @@ func chainedAsyncCallServiceA(c *gin.Context) {
 }
 
 func inlineTracesExample(c *gin.Context) {
+
+	otelzap.Ctx(c.Request.Context()).Info(
+		fmt.Sprintf("hello from `/inlineTraceEx` API of service %s", ServiceName),
+	)
 
 	requestToA := BasicPayload{
 		Message: "request for a number from A",

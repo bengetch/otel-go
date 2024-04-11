@@ -6,21 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"io"
 	"log"
 	"net/http"
-	"time"
 )
-
-var Client *http.Client
-
-func NewHttpClient() *http.Client {
-	return &http.Client{
-		Timeout:   time.Second * 10,
-		Transport: otelhttp.NewTransport(http.DefaultTransport),
-	}
-}
 
 func makeRequest(r *BasicPayload, url string, method string, responseField string, ctx context.Context) (string, int, error) {
 	/*
@@ -39,7 +28,7 @@ func makeRequest(r *BasicPayload, url string, method string, responseField strin
 		return "failed to create request", http.StatusInternalServerError, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	resp, err := Client.Do(req)
 	// TODO: more granular HTTP status handling
 	if err != nil {

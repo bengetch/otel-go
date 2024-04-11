@@ -10,8 +10,9 @@ services:
     environment:
       - SERVICE_NAME=entrypoint
       - OTEL_EXPORTER_OTLP_ENDPOINT=collector:${COLLECTOR_GRPC_PORT}
-      - SPAN_EXPORTER=otel
-      - METER_EXPORTER=noop
+      - TRACES_EXPORTER=noop
+      - METRICS_EXPORTER=stdout
+      - LOGS_EXPORTER=noop
 
   service_a:
     build: ./service_a
@@ -22,8 +23,9 @@ services:
     environment:
       - SERVICE_NAME=service_a
       - OTEL_EXPORTER_OTLP_ENDPOINT=collector:${COLLECTOR_GRPC_PORT}
-      - SPAN_EXPORTER=otel
-      - METER_EXPORTER=noop
+      - TRACES_EXPORTER=noop
+      - METRICS_EXPORTER=stdout
+      - LOGS_EXPORTER=noop
 
   service_b:
     build: ./service_b
@@ -34,8 +36,9 @@ services:
     environment:
       - SERVICE_NAME=service_b
       - OTEL_EXPORTER_OTLP_ENDPOINT=collector:${COLLECTOR_GRPC_PORT}
-      - SPAN_EXPORTER=otel
-      - METER_EXPORTER=noop
+      - TRACES_EXPORTER=noop
+      - METRICS_EXPORTER=stdout
+      - LOGS_EXPORTER=noop
 
   collector:
     image: otel/opentelemetry-collector-contrib:latest
