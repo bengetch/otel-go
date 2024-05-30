@@ -20,8 +20,9 @@ import (
 )
 
 var (
-	ServiceName string
-	Client      *http.Client
+	ServiceName      string
+	Client           *http.Client
+	EndpointServiceB = os.Getenv("ENDPOINT_SERVICE_B")
 )
 
 func initServiceName() {
@@ -124,13 +125,11 @@ func chainedRequest(c *gin.Context) {
 		Number:  payload.Number + rand.Intn(11),
 	}
 
-	api := "/chainedRequest"
-	responseField := "number"
 	response, status, err := makeRequest(
 		&requestToB,
-		fmt.Sprintf("http://service_b:5000%s", api),
+		fmt.Sprintf("http://%s/chainedRequest", EndpointServiceB),
 		"POST",
-		responseField,
+		"number",
 		c.Request.Context(),
 	)
 	if err != nil {
@@ -146,14 +145,11 @@ func chainedRequest(c *gin.Context) {
 
 func makeAsyncRequest(payload *BasicPayload, ctx context.Context) {
 
-	api := "/chainedRequest"
-	responseField := "number"
-
 	response, _, err := makeRequest(
 		payload,
-		fmt.Sprintf("http://service_b:5000%s", api),
+		fmt.Sprintf("http://%s/chainedRequest", EndpointServiceB),
 		"POST",
-		responseField,
+		"number",
 		ctx,
 	)
 

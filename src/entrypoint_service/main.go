@@ -26,6 +26,8 @@ var (
 	Tracer            trace.Tracer
 	helloRequestCount metric.Int64Counter
 	Client            *http.Client
+	EndpointServiceA  = os.Getenv("ENDPOINT_SERVICE_A")
+	EndpointServiceB  = os.Getenv("ENDPOINT_SERVICE_B")
 )
 
 func initServiceName() {
@@ -139,13 +141,11 @@ func callServiceA(c *gin.Context) {
 		Number:  rand.Intn(11),
 	}
 
-	api := "/basicRequest"
-	responseField := "message"
 	response, status, err := makeRequest(
 		&requestToA,
-		fmt.Sprintf("http://service_a:5000%s", api),
+		fmt.Sprintf("http://%s/basicRequest", EndpointServiceA),
 		"POST",
-		responseField,
+		"message",
 		c.Request.Context(),
 	)
 
@@ -174,13 +174,11 @@ func callServiceB(c *gin.Context) {
 		Number:  rand.Intn(11),
 	}
 
-	api := "/basicRequest"
-	responseField := "message"
 	response, status, err := makeRequest(
 		&requestToB,
-		fmt.Sprintf("http://service_b:5000%s", api),
+		fmt.Sprintf("http://%s/basicRequest", EndpointServiceB),
 		"POST",
-		responseField,
+		"message",
 		c.Request.Context(),
 	)
 	if err != nil {
@@ -210,13 +208,11 @@ func chainedCallServiceA(c *gin.Context) {
 		Number:  rand.Intn(11),
 	}
 
-	api := "/chainedRequest"
-	responseField := "message"
 	response, status, err := makeRequest(
 		&requestToA,
-		fmt.Sprintf("http://service_a:5000%s", api),
+		fmt.Sprintf("http://%s/chainedRequest", EndpointServiceA),
 		"POST",
-		responseField,
+		"message",
 		c.Request.Context(),
 	)
 	if err != nil {
@@ -245,13 +241,11 @@ func chainedAsyncCallServiceA(c *gin.Context) {
 		Number:  rand.Intn(11),
 	}
 
-	api := "/chainedAsyncRequest"
-	responseField := "message"
 	response, status, err := makeRequest(
 		&requestToA,
-		fmt.Sprintf("http://service_a:5000%s", api),
+		fmt.Sprintf("http://%s/chainedAsyncRequest", EndpointServiceA),
 		"POST",
-		responseField,
+		"message",
 		c.Request.Context(),
 	)
 	if err != nil {
@@ -276,13 +270,11 @@ func inlineTracesExample(c *gin.Context) {
 		Number:  rand.Intn(6),
 	}
 
-	api := "/addNumber"
-	responseField := "number"
 	response, status, err := makeRequest(
 		&requestToA,
-		fmt.Sprintf("http://service_a:5000%s", api),
+		fmt.Sprintf("http://%s/addNumber", EndpointServiceA),
 		"POST",
-		responseField,
+		"number",
 		c.Request.Context(),
 	)
 	if err != nil {

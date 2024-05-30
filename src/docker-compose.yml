@@ -13,6 +13,8 @@ services:
       - TRACES_EXPORTER=otel
       - METRICS_EXPORTER=noop
       - LOGS_EXPORTER=noop
+      - ENDPOINT_SERVICE_A=service_a:5000
+      - ENDPOINT_SERVICE_B=service_b:5000
 
   service_a:
     build: ./service_a
@@ -26,6 +28,7 @@ services:
       - TRACES_EXPORTER=otel
       - METRICS_EXPORTER=noop
       - LOGS_EXPORTER=noop
+      - ENDPOINT_SERVICE_B=service_b:5000
 
   service_b:
     build: ./service_b
