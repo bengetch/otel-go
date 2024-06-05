@@ -3,12 +3,13 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
+
 	"github.com/agoda-com/opentelemetry-go/otelzap"
 	"github.com/agoda-com/opentelemetry-logs-go/sdk/logs"
 	logshandler "github.com/bengetch/otelhandlers/logs"
 	metricshandler "github.com/bengetch/otelhandlers/metrics"
 	traceshandler "github.com/bengetch/otelhandlers/traces"
-	"os"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"

@@ -23,6 +23,7 @@ var (
 	ServiceName      string
 	Client           *http.Client
 	EndpointServiceB = os.Getenv("ENDPOINT_SERVICE_B")
+	SelfPort         = os.Getenv("SELF_PORT")
 )
 
 func initServiceName() {
@@ -63,7 +64,7 @@ func main() {
 	router.POST("/chainedAsyncRequest", chainedAsyncRequest)
 	router.POST("/addNumber", addNumber)
 
-	err := router.Run("0.0.0.0:5000")
+	err := router.Run(fmt.Sprintf("0.0.0.0:%s", SelfPort))
 	if err != nil {
 		otelzap.Ctx(context.Background()).Fatal(
 			fmt.Sprintf("Failed to start the server: %v\n", err),
