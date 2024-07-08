@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"math/rand"
 	"net/http"
 	"os"
 	"strconv"
 
-	"github.com/agoda-com/opentelemetry-go/otelzap"
 	"github.com/gin-gonic/gin"
 
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
@@ -46,7 +46,8 @@ func main() {
 
 	err := router.Run(fmt.Sprintf("0.0.0.0:%s", SelfPort))
 	if err != nil {
-		otelzap.Ctx(context.Background()).Fatal(
+		slog.ErrorContext(
+			context.Background(),
 			fmt.Sprintf("Failed to start the server: %v\n", err),
 		)
 	}
@@ -54,7 +55,8 @@ func main() {
 
 func hello(c *gin.Context) {
 
-	otelzap.Ctx(c.Request.Context()).Info(
+	slog.InfoContext(
+		c.Request.Context(),
 		fmt.Sprintf("hello from `/` API of service %s", ServiceName),
 	)
 
@@ -68,7 +70,8 @@ type BasicPayload struct {
 
 func basicRequest(c *gin.Context) {
 
-	otelzap.Ctx(c.Request.Context()).Info(
+	slog.InfoContext(
+		c.Request.Context(),
 		fmt.Sprintf("hello from `/basicRequest` API of service %s", ServiceName),
 	)
 
@@ -88,7 +91,8 @@ func basicRequest(c *gin.Context) {
 
 func chainedRequest(c *gin.Context) {
 
-	otelzap.Ctx(c.Request.Context()).Info(
+	slog.InfoContext(
+		c.Request.Context(),
 		fmt.Sprintf("hello from `/chainedRequest` API of service %s", ServiceName),
 	)
 

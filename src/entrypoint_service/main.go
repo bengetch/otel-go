@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"math/rand"
 	"net/http"
 	"os"
 	"strconv"
 	"time"
 
-	"github.com/agoda-com/opentelemetry-go/otelzap"
 	"github.com/gin-gonic/gin"
 
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
@@ -105,7 +105,8 @@ func main() {
 
 	err := router.Run(fmt.Sprintf("0.0.0.0:%s", SelfPort))
 	if err != nil {
-		otelzap.Ctx(context.Background()).Fatal(
+		slog.ErrorContext(
+			context.Background(),
 			fmt.Sprintf("Failed to start the server: %v\n", err),
 		)
 	}
@@ -113,7 +114,8 @@ func main() {
 
 func hello(c *gin.Context) {
 
-	otelzap.Ctx(c.Request.Context()).Info(
+	slog.InfoContext(
+		c.Request.Context(),
 		fmt.Sprintf("hello from `/` API of service %s", ServiceName),
 	)
 
@@ -133,7 +135,8 @@ func callServiceA(c *gin.Context) {
 		send a hello message and a random number to service A, return response from A to client
 	*/
 
-	otelzap.Ctx(c.Request.Context()).Info(
+	slog.InfoContext(
+		c.Request.Context(),
 		fmt.Sprintf("hello from `/basicA` API of service %s", ServiceName),
 	)
 
@@ -166,7 +169,8 @@ func callServiceB(c *gin.Context) {
 		send a hello message and a random number to service B, return response from B to client
 	*/
 
-	otelzap.Ctx(c.Request.Context()).Info(
+	slog.InfoContext(
+		c.Request.Context(),
 		fmt.Sprintf("hello from `/basicB` API of service %s", ServiceName),
 	)
 
@@ -200,7 +204,8 @@ func chainedCallServiceA(c *gin.Context) {
 		returned to the client
 	*/
 
-	otelzap.Ctx(c.Request.Context()).Info(
+	slog.InfoContext(
+		c.Request.Context(),
 		fmt.Sprintf("hello from `/chainedA` API of service %s", ServiceName),
 	)
 
@@ -233,7 +238,8 @@ func chainedAsyncCallServiceA(c *gin.Context) {
 		service A does not wait for a response from service B before sending its response.
 	*/
 
-	otelzap.Ctx(c.Request.Context()).Info(
+	slog.InfoContext(
+		c.Request.Context(),
 		fmt.Sprintf("hello from `/chainedAsyncA` API of service %s", ServiceName),
 	)
 
@@ -262,7 +268,8 @@ func chainedAsyncCallServiceA(c *gin.Context) {
 
 func inlineTracesExample(c *gin.Context) {
 
-	otelzap.Ctx(c.Request.Context()).Info(
+	slog.InfoContext(
+		c.Request.Context(),
 		fmt.Sprintf("hello from `/inlineTraceEx` API of service %s", ServiceName),
 	)
 

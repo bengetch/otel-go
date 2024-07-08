@@ -3,36 +3,30 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 
-	"github.com/agoda-com/opentelemetry-go/otelzap"
-	"github.com/agoda-com/opentelemetry-logs-go/sdk/logs"
 	logshandler "github.com/bengetch/otelhandlers/logs"
 	metricshandler "github.com/bengetch/otelhandlers/metrics"
 	traceshandler "github.com/bengetch/otelhandlers/traces"
-
+	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
+	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-
-	"go.uber.org/zap"
 )
 
-func SetupLogs() *logs.LoggerProvider {
-	/*
-		configure logger provider instance, which is responsible for (1) injecting trace context data into logs
-		where applicable and (2) exporting logs to the backend indicated by the LOGS_EXPORTER environment variable
-	*/
-
-	lp, lpErr := logshandler.GetLogProvider(os.Getenv("LOGS_EXPORTER"), ServiceName)
+func SetupLogs() *sdklog.LoggerProvider {
+	lp, lpErr := logshandler.GetProvider(os.Getenv("LOGS_EXPORTER"), ServiceName)
 	if lpErr != nil {
-		otelzap.Ctx(context.Background()).Fatal(
-			fmt.Sprintf("Failed to get log provider: %v\n", lpErr),
-		)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("Failed to get log provider: %v\n", lpErr))
 	} else {
-		logger := zap.New(otelzap.NewOtelCore(lp))
-		zap.ReplaceGlobals(logger)
+		logger := otelslog.NewLogger(
+			ServiceName,
+			otelslog.WithLoggerProvider(lp),
+		)
+		slog.SetDefault(logger)
 	}
 
 	return lp
@@ -45,11 +39,9 @@ func SetupTraces() *sdktrace.TracerProvider {
 		context is propagated correctly across API calls
 	*/
 
-	tp, tpErr := traceshandler.GetTracerProvider(os.Getenv("TRACES_EXPORTER"), ServiceName)
+	tp, tpErr := traceshandler.GetProvider(os.Getenv("TRACES_EXPORTER"), ServiceName)
 	if tpErr != nil {
-		otelzap.Ctx(context.Background()).Fatal(
-			fmt.Sprintf("Failed to get tracer provider: %v\n", tpErr),
-		)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("Failed to get tracer provider: %v\n", tpErr))
 	} else {
 		otel.SetTracerProvider(tp)
 		textPropagator := propagation.NewCompositeTextMapPropagator(propagation.TraceContext{})
@@ -65,11 +57,9 @@ func SetupMetrics() *sdkmetric.MeterProvider {
 		the METRICS_EXPORTER environment variable
 	*/
 
-	mp, mpErr := metricshandler.GetMeterProvider(os.Getenv("METRICS_EXPORTER"), ServiceName)
+	mp, mpErr := metricshandler.GetProvider(os.Getenv("METRICS_EXPORTER"), ServiceName)
 	if mpErr != nil {
-		otelzap.Ctx(context.Background()).Fatal(
-			fmt.Sprintf("Failed to get metric provider: %v\n", mpErr),
-		)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("Failed to get metric provider: %v\n", mpErr))
 	} else {
 		otel.SetMeterProvider(mp)
 	}
@@ -77,26 +67,29 @@ func SetupMetrics() *sdkmetric.MeterProvider {
 	return mp
 }
 
-func CleanupTelemetryProviders(lp *logs.LoggerProvider, tp *sdktrace.TracerProvider, mp *sdkmetric.MeterProvider) {
+func CleanupTelemetryProviders(lp *sdklog.LoggerProvider, tp *sdktrace.TracerProvider, mp *sdkmetric.MeterProvider) {
 	/*
 		call shutdown function on all telemetry provider types
 	*/
 
 	ctx := context.Background()
 	if lpShutdownErr := lp.Shutdown(ctx); lpShutdownErr != nil {
-		otelzap.Ctx(context.Background()).Error(
+		slog.ErrorContext(
+			context.Background(),
 			fmt.Sprintf("error while shutting down logger provider: %v\n", lpShutdownErr),
 		)
 	}
 
 	if tpShutdownErr := tp.Shutdown(ctx); tpShutdownErr != nil {
-		otelzap.Ctx(context.Background()).Error(
+		slog.ErrorContext(
+			context.Background(),
 			fmt.Sprintf("error while shutting down tracer provider: %v\n", tpShutdownErr),
 		)
 	}
 
 	if mpShutdownErr := mp.Shutdown(ctx); mpShutdownErr != nil {
-		otelzap.Ctx(context.Background()).Error(
+		slog.ErrorContext(
+			context.Background(),
 			fmt.Sprintf("error while shutting down meter provider: %v\n", mpShutdownErr),
 		)
 	}
