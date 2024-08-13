@@ -9,6 +9,11 @@ Inside the `src/` directory, create a `.env` file that matches the `.env.example
 identical to those in the `.env.example` file. If you care about pushing emitted telemetry to Datadog, then
 you need to edit the value of `DD_API_KEY` to be a valid Datadog API key. Otherwise, no changes are necessary.
 
+### collector configuration
+
+The `main` branch of this repository uses an [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/installation/),
+while the `datadog-agent` branch uses the [Datadog Collector](https://docs.datadoghq.com/opentelemetry/collector_exporter/otel_collector_datadog_exporter/?tab=onahost)
+
 ### exporters
 
 Within the `environment` entry for each service defined in the `src/docker-compose.yml` file, there are three 
