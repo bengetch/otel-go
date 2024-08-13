@@ -10,9 +10,9 @@ services:
     environment:
       - SERVICE_NAME=entrypoint
       - OTEL_EXPORTER_OTLP_ENDPOINT=datadog:${DD_HTTP_PORT}
-      - TRACES_EXPORTER=otel
-      - METRICS_EXPORTER=otel
-      - LOGS_EXPORTER=otel
+      - TRACES_EXPORTER=stdout
+      - METRICS_EXPORTER=noop
+      - LOGS_EXPORTER=stdout
       - ENDPOINT_SERVICE_A=service_a:5000
       - ENDPOINT_SERVICE_B=service_b:5000
       - SELF_PORT=5000
@@ -26,9 +26,9 @@ services:
     environment:
       - SERVICE_NAME=service_a
       - OTEL_EXPORTER_OTLP_ENDPOINT=datadog:${DD_HTTP_PORT}
-      - TRACES_EXPORTER=otel
-      - METRICS_EXPORTER=otel
-      - LOGS_EXPORTER=otel
+      - TRACES_EXPORTER=stdout
+      - METRICS_EXPORTER=noop
+      - LOGS_EXPORTER=stdout
       - ENDPOINT_SERVICE_B=service_b:5000
       - SELF_PORT=5000
 
@@ -41,9 +41,9 @@ services:
     environment:
       - SERVICE_NAME=service_b
       - OTEL_EXPORTER_OTLP_ENDPOINT=datadog:${DD_HTTP_PORT}
-      - TRACES_EXPORTER=noop
+      - TRACES_EXPORTER=stdout
       - METRICS_EXPORTER=noop
-      - LOGS_EXPORTER=noop
+      - LOGS_EXPORTER=stdout
       - SELF_PORT=5000
 
   datadog:

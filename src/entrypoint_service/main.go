@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	otelhandlers "github.com/bengetch/otelhandlers/sdk"
 	"github.com/gin-gonic/gin"
 
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
@@ -88,10 +89,10 @@ func main() {
 	initHelloRequestCount()
 	initHttpClient()
 
-	logProvider := SetupLogs()
-	tracerProvider := SetupTraces()
-	meterProvider := SetupMetrics()
-	defer CleanupTelemetryProviders(logProvider, tracerProvider, meterProvider)
+	logProvider := otelhandlers.SetupLogs(os.Getenv("LOGS_EXPORTER"), ServiceName)
+	tracerProvider := otelhandlers.SetupTraces(os.Getenv("TRACES_EXPORTER"), ServiceName)
+	meterProvider := otelhandlers.SetupMetrics(os.Getenv("METRICS_EXPORTER"), ServiceName)
+	defer otelhandlers.CleanupTelemetryProviders(logProvider, tracerProvider, meterProvider)
 
 	router := gin.Default()
 	router.Use(otelgin.Middleware(ServiceName))

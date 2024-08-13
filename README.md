@@ -6,7 +6,8 @@ PoC OTel implementation with services written in Go
 ### environment
 
 Inside the `src/` directory, create a `.env` file that matches the `.env.example` file. The contents can be 
-identical to those in the `.env.example` file. 
+identical to those in the `.env.example` file. If you care about pushing emitted telemetry to Datadog, then
+you need to edit the value of `DD_API_KEY` to be a valid Datadog API key. Otherwise, no changes are necessary.
 
 ### exporters
 
@@ -17,7 +18,7 @@ get exported. All three entries can take one of the following values:
 1. `otel`: Export telemetry for this type to the `collector` service (which sends all received telemetry to its 
 own `stdout` and Datadog by default).
 2. `stdout`: Export telemetry for this type to `stdout` of the container that this service is running on.
-3. `noop`: Do not export telemetry for this type anywhere.
+3. `noop`: Ignore telemetry for this type.
 
 #### example
 
@@ -44,7 +45,8 @@ The `entrypoint` service has several public endpoints that can be accessed via:
 curl http://localhost:5000/<ENDPOINT>
 ```
 
-A full list of current endpoints for the `entrypoint_service`:
+A full list of current endpoints for the `entrypoint_service` is provided below. None of these endpoints do anything
+particularly interesting besides demonstrating various aspects of OTel instrumentation.
 
 * `/`: Log a hello message and increment a meter that tracks how many requests have been made to `/`
 * `/basicA`: Send a random number to the `/basicRequest` API for `service_a`, which immediately
@@ -55,17 +57,10 @@ number to it, sends the result to `service_b`, who adds another random number to
 back to the `entrypoint_service`.
 * `/chainedAsyncA`: Send a random number to the `/chainedAsyncRequest` API for `service_a`, which adds another
 random number to it. `service_a` then asynchronously calls the `/chainedRequest` API for `service_b`, and immediately
-returns a success message to the `entrypoint_service`. This API demonstrates manual trace propagation, where 
-the trace ID for an incoming request must be extracted and used for a new context. The code for this is in 
-the `newContext()` function of `service_a`.
+returns a success message to the `entrypoint_service`. This API demonstrates **manual** trace propagation, where 
+the trace information for an existing request must be extracted and used within a new context that isn't otherwise 
+bound to its parent. The code for constructing new traces in this way is in the `newContext()` function of `service_a`.
 * `/inlineTraceEx`: Send a random number to the `/addNumber` API for `service_a`, which adds another random number
 to it and returns the result. On the `entrypoint_service`, one of two inline spans are created: one if the returned
 number is less than or equal to 5, and another otherwise. This API demonstrates how to manually create traces inside
 of application code, as opposed to the automatic instrumentation that is used elsewhere in this repository.
-
-None of them do anything particularly interesting and are only intended to demonstrate various aspects of 
-OTel instrumentation.
-
-
-## TODO
-- Write docs on how to configure existing instrumentation (e.g. send telemetry to collector vs service stdout vs noop)
